@@ -1,16 +1,25 @@
-FROM alpine:3.7
+FROM golang:1.9.2-alpine3.6 AS build
 MAINTAINER Ikhlas Firlana <ifirlana@gmail> (@ifirlana)
 
-RUN apk update && apk add curl git mercurial bzr 'go=1.5.3-r0' && rm -rf /var/cache/apk/*
+# Install tools required to build the project
+# We will need to run `docker build --no-cache .` to update those dependencies
+RUN apk add --no-cache git
+RUN go get github.com/golang/dep/cmd/dep
 
-ENV GOROOT /usr/lib/go
-ENV GOPATH /gopath
-ENV GOBIN /gopath/bin
-ENV PATH $PATH:$GOROOT/bin:$GOPATH/bin
+# Gopkg.toml and Gopkg.lock lists project dependencies
+# These layers will only be re-built when Gopkg files are updated
+COPY Gopkg.lock Gopkg.toml /go/src/project/
+WORKDIR /go/src/project/
+# Install library dependencies
+RUN dep ensure -vendor-only
 
-WORKDIR /gopath/src/app
-ADD . /gopath/src/app/
-RUN go get app
+# Copy all project and build it
+# This layer will be rebuilt when ever a file has changed in the project directory
+COPY . /go/src/project/
+RUN go build -o /bin/project
 
-CMD []
-ENTRYPOINT ["/gopath/bin/app"]
+# This results in a single layer image
+FROM scratch
+COPY --from=build /bin/project /bin/project
+ENTRYPOINT ["/bin/project"]
+CMD ["--help"]
